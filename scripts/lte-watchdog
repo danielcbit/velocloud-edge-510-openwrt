@@ -1,0 +1,11 @@
+#!/bin/sh
+# Keep the LTE backup WAN alive. Re-run ifup if the interface or data path is down.
+if ! ifstatus wanb 2>/dev/null | grep -q "\"up\": true"; then
+	logger -t lte-watchdog "wanb is down, restarting"
+	ifup wanb
+	exit 0
+fi
+if ! ping -c 1 -W 3 -I wwan0 1.1.1.1 >/dev/null 2>&1; then
+	logger -t lte-watchdog "wanb up but no connectivity, restarting"
+	ifup wanb
+fi

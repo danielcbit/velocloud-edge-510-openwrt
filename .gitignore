@@ -1,0 +1,9 @@
+.work/
+out/
+*.tar.zst
+*.img
+*.img.gz
+*.bin
+*.rom
+*.ko.orig
+openwrt-config-backup.tar.gz

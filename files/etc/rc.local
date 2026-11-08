@@ -1,0 +1,4 @@
+#!/bin/sh
+# VeloCloud Edge 510 LTE - hardware setup moved to /etc/init.d/lte-hw.
+# The watchdog keeps wanb alive after boot.
+exit 0

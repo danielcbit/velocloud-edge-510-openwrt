@@ -1,0 +1,133 @@
+#!/bin/sh
+# Collect EM7455 / QMI status as one JSON object for the LuCI LTE page.
+# Safe to run repeatedly; every uqmi call has a hard timeout.
+
+D=${LTE_DEV:-/dev/cdc-wdm0}
+T=3000
+SLOTFILE=/etc/lte-sim-slot
+
+json_escape() {
+	printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+jf() {
+	printf '%s' "$1" | jsonfilter -e "$2" 2>/dev/null
+}
+num() {
+	case "$1" in
+		''|null) printf 'null' ;;
+		*) printf '%s' "$1" ;;
+	esac
+}
+str() {
+	printf '"%s"' "$(json_escape "$1")"
+}
+bool() {
+	case "$1" in
+		true|false) printf '%s' "$1" ;;
+		*) printf 'null' ;;
+	esac
+}
+# BusyBox here has no timeout applet.
+to() {
+	_secs=$1
+	shift
+	"$@" &
+	_p=$!
+	( sleep "$_secs"; kill "$_p" 2>/dev/null ) >/dev/null 2>&1 &
+	_w=$!
+	wait "$_p" 2>/dev/null
+	kill "$_w" 2>/dev/null
+}
+cellval() {
+	printf '%s' "$cell" | grep -o "\"$1\":[^,}]*" | head -1 | cut -d: -f2 | tr -d '"'
+}
+
+sig=$(to 6 uqmi -s -d "$D" -t "$T" --get-signal-info 2>/dev/null)
+serv=$(to 6 uqmi -s -d "$D" -t "$T" --get-serving-system 2>/dev/null)
+sys=$(to 6 uqmi -s -d "$D" -t "$T" --get-system-info 2>/dev/null)
+cell=$(to 6 uqmi -s -d "$D" -t "$T" --get-cell-location-info 2>/dev/null)
+tx=$(to 6 uqmi -s -d "$D" -t "$T" --get-tx-rx-info lte 2>/dev/null)
+cur=$(to 6 uqmi -s -d "$D" -t "$T" --get-current-settings 2>/dev/null)
+data=$(to 6 uqmi -s -d "$D" -t "$T" --get-data-status 2>/dev/null)
+sim=$(to 6 uqmi -s -d "$D" -t "$T" --uim-get-sim-state 2>/dev/null)
+wanb=$(ifstatus wanb 2>/dev/null)
+
+op=$(jf "$serv" '@.plmn_description')
+mcc=$(jf "$serv" '@.plmn_mcc')
+mnc=$(jf "$serv" '@.plmn_mnc')
+reg=$(jf "$serv" '@.registration')
+roam=$(jf "$serv" '@.roaming')
+radio=$(jf "$serv" '@.radio_interface[0]')
+plmn=""
+[ -n "$mcc" ] && [ -n "$mnc" ] && plmn="$mcc-$mnc"
+
+svc=$(jf "$sys" '@.lte.service_status')
+tac=$(jf "$sys" '@.lte.tracking_area_code')
+enodeb=$(jf "$sys" '@.lte.enodeb_id')
+cellid=$(jf "$sys" '@.lte.cell_id')
+
+rssi=$(jf "$sig" '@.rssi')
+rsrq=$(jf "$sig" '@.rsrq')
+rsrp=$(jf "$sig" '@.rsrp')
+snr=$(jf "$sig" '@.snr')
+
+band=$(cellval band)
+freq=$(cellval frequency)
+chan=$(cellval channel)
+pci=$(cellval physical_cell_id)
+duplex=$(cellval duplex)
+
+txp=$(jf "$tx" '@.tx.tx_power')
+
+ip=$(jf "$cur" '@.ipv4.ip')
+gw=$(jf "$cur" '@.ipv4.gateway')
+dns1=$(jf "$cur" '@.ipv4.dns1')
+dns2=$(jf "$cur" '@.ipv4.dns2')
+mtu=$(jf "$cur" '@.mtu')
+
+dst=$(jf "$data" '@')
+simst=$(jf "$sim" '@.card_application_state')
+pin=$(jf "$sim" '@.pin1_status')
+slot=$(cat "$SLOTFILE" 2>/dev/null)
+
+up=$(jf "$wanb" '@.up')
+uptime=$(jf "$wanb" '@.uptime')
+
+rx=$(cat /sys/class/net/wwan0/statistics/rx_bytes 2>/dev/null)
+txb=$(cat /sys/class/net/wwan0/statistics/tx_bytes 2>/dev/null)
+
+printf '{'
+printf '"timestamp":%s,' "$(date +%s)"
+printf '"operator":%s,' "$(str "$op")"
+printf '"plmn":%s,' "$(str "$plmn")"
+printf '"registration":%s,' "$(str "$reg")"
+printf '"roaming":%s,' "$(bool "$roam")"
+printf '"radio":%s,' "$(str "$radio")"
+printf '"service_status":%s,' "$(str "$svc")"
+printf '"rssi":%s,' "$(num "$rssi")"
+printf '"rsrq":%s,' "$(num "$rsrq")"
+printf '"rsrp":%s,' "$(num "$rsrp")"
+printf '"snr":%s,' "$(num "$snr")"
+printf '"band":%s,' "$(num "$band")"
+printf '"frequency":%s,' "$(num "$freq")"
+printf '"channel":%s,' "$(num "$chan")"
+printf '"pci":%s,' "$(num "$pci")"
+printf '"duplex":%s,' "$(str "$duplex")"
+printf '"tac":%s,' "$(num "$tac")"
+printf '"enodeb":%s,' "$(num "$enodeb")"
+printf '"cell_id":%s,' "$(num "$cellid")"
+printf '"tx_power":%s,' "$(num "$txp")"
+printf '"data_status":%s,' "$(str "$dst")"
+printf '"ipv4":%s,' "$(str "$ip")"
+printf '"gateway":%s,' "$(str "$gw")"
+printf '"dns1":%s,' "$(str "$dns1")"
+printf '"dns2":%s,' "$(str "$dns2")"
+printf '"mtu":%s,' "$(num "$mtu")"
+printf '"sim_state":%s,' "$(str "$simst")"
+printf '"pin1":%s,' "$(str "$pin")"
+printf '"slot":%s,' "$(str "$slot")"
+printf '"up":%s,' "$(bool "$up")"
+printf '"uptime":%s,' "$(num "$uptime")"
+printf '"rx_bytes":%s,' "$(num "$rx")"
+printf '"tx_bytes":%s' "$(num "$txb")"
+printf '}\n'

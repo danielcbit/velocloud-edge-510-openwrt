@@ -1,0 +1,24 @@
+#!/bin/sh
+# VeloCloud Edge 510 LTE - apply the SIM slot chosen in LuCI before QMI setup.
+# Called from /lib/netifd/proto/qmi.sh with: <interface> <sim_slot>
+
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+
+iface="$1"
+slot="$2"
+
+[ -n "$slot" ] || slot=$(uci -q get "network.$iface.sim_slot")
+[ -n "$slot" ] || exit 0
+
+case "$slot" in
+	bottom|top) ;;
+	*) exit 0 ;;
+esac
+
+cur=$(cat /etc/lte-sim-slot 2>/dev/null)
+[ "$slot" = "$cur" ] && exit 0
+
+logger -t lte-qmi "SIM slot change $cur -> $slot (interface $iface)"
+/usr/bin/lte-hw-setup --slot "$slot"
+exit $?

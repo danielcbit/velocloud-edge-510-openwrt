@@ -1,0 +1,12 @@
+config command 'sim_bottom'
+	option name 'LTE: use bottom SIM (restart)'
+	option command '/usr/bin/sim-select bottom'
+
+config command 'sim_top'
+	option name 'LTE: use top SIM (restart)'
+	option command '/usr/bin/sim-select top'
+
+config command 'sim_status'
+	option name 'LTE: SIM / modem status'
+	option command '/usr/bin/sim-select status'
+

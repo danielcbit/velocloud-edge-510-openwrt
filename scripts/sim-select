@@ -1,0 +1,57 @@
+#!/bin/sh
+# VeloCloud Edge 510 LTE - SIM slot control, callable from LuCI.
+#
+# Usage:
+#   sim-select bottom   select bottom SIM, power-cycle modem, restart wanb
+#   sim-select top      select top SIM, power-cycle modem, restart wanb
+#   sim-select status   show selected slot, SIM state, registration, data status
+
+DEV=/dev/cdc-wdm0
+SLOTFILE=/etc/lte-sim-slot
+
+# BusyBox here has no timeout applet; run a command with a hard limit.
+to() {
+	_secs=$1
+	shift
+	"$@" &
+	_p=$!
+	( sleep "$_secs"; kill "$_p" 2>/dev/null ) >/dev/null 2>&1 &
+	_w=$!
+	wait "$_p" 2>/dev/null
+	kill "$_w" 2>/dev/null
+}
+
+status() {
+	echo "configured slot: $(cat "$SLOTFILE" 2>/dev/null || echo unknown)"
+	echo "GPIO38:          $(cat /sys/class/gpio/gpio38/value 2>/dev/null || echo n/a)"
+	echo "--- SIM state ---"
+	to 8 uqmi -d "$DEV" -t 5000 --uim-get-sim-state 2>&1 | head -14
+	echo "--- serving system ---"
+	to 8 uqmi -d "$DEV" -t 5000 --get-serving-system 2>&1 | head -10
+	echo "--- data status ---"
+	to 8 uqmi -d "$DEV" -t 5000 --get-data-status 2>&1
+	echo "--- interface ---"
+	ifstatus wanb 2>/dev/null | grep -E '"up"|"pending"|l3_device'
+}
+
+case "$1" in
+	status)
+		status
+		;;
+	bottom|top)
+		echo "Switching SIM to $1 (modem will restart)..."
+		ifdown wanb 2>/dev/null
+		/usr/bin/lte-hw-setup --slot "$1" || {
+			echo "hardware setup failed"
+			exit 1
+		}
+		ifup wanb 2>/dev/null
+		sleep 8
+		echo
+		status
+		;;
+	*)
+		echo "Usage: sim-select bottom|top|status"
+		exit 1
+		;;
+esac

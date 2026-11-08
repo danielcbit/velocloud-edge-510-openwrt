@@ -1,0 +1,13 @@
+{
+	"admin/status/lte": {
+		"title": "LTE",
+		"order": 25,
+		"action": {
+			"type": "view",
+			"path": "lte/status"
+		},
+		"depends": {
+			"acl": [ "luci-app-lte" ]
+		}
+	}
+}

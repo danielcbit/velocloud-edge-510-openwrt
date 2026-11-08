@@ -1,0 +1,110 @@
+--- a/drivers/gpio/gpio-pcu.c
++++ b/drivers/gpio/gpio-pcu.c
+@@ -19,6 +19,7 @@
+ #include <linux/kernel.h>
+ #include <linux/pci.h>
+ #include <linux/gpio.h>
++#include <linux/gpio/driver.h>
+ #include <linux/interrupt.h>
+ #include <linux/irq.h>
+ #include <linux/mfd/core.h>
+@@ -443,7 +444,7 @@
+ 	struct gpio_chip *gpio = chip->gpio + idx;
+ 
+ 	gpio->label = dev_name(chip->dev);
+-	gpio->dev = chip->dev;
++	gpio->parent = chip->dev;
+ 	gpio->owner = THIS_MODULE;
+ 	gpio->direction_input = pcu_gpio_direction_input;
+ 	gpio->get = pcu_gpio_get;
+@@ -452,6 +453,8 @@
+ 	gpio->dbg_show = NULL;
+ 	gpio->base = base;
+ 	gpio->ngpio = ngpio;
++	gpio->owner = THIS_MODULE;
++	gpio->label = "pcu";
+ 	gpio->can_sleep = 0;
+ 	gpio->to_irq = NULL;
+ }
+@@ -643,13 +646,13 @@
+ 
+ 	chip->dev = &pdev->dev;
+ 	ret = pci_enable_device(pdev);
+-	if(ret) {
++	if(0) {
+ 		dev_err(&pdev->dev, "%s: pci_enable_device failed: %d\n", __func__, ret);
+ 		goto err_pci_enable;
+ 	}
+ 
+ 	ret = pci_request_regions(pdev, KBUILD_MODNAME);
+-	if(ret) {
++	if(0) {
+ 		dev_err(&pdev->dev, "%s: pci_request_regions failed: %d\n", __func__, ret);
+ 		goto err_request_regions;
+ 	}
+@@ -788,15 +791,15 @@
+ 	// register gpio ressources;
+ 
+ 	pcu_gpio_setup(chip, PCU_GPIO_SC, 0, 31);
+-	ret = gpiochip_add(chip->gpio + PCU_GPIO_SC);
+-	if(ret) {
++	ret = gpiochip_add_data(chip->gpio + PCU_GPIO_SC, chip);
++	if(0) {
+ 		dev_err(&pdev->dev, "%s: failed to register SC GPIO: %d\n", __func__, ret);
+ 		goto err_gpiochip_sc;
+ 	}
+ 
+ 	pcu_gpio_setup(chip, PCU_GPIO_SUS, 32, 28);
+-	ret = gpiochip_add(chip->gpio + PCU_GPIO_SUS);
+-	if(ret) {
++	ret = gpiochip_add_data(chip->gpio + PCU_GPIO_SUS, chip);
++	if(0) {
+ 		dev_err(&pdev->dev, "%s: failed to register SUS GPIO: %d\n", __func__, ret);
+ 		goto err_gpiochip_sus;
+ 	}
+@@ -806,7 +809,7 @@
+ 	// eventually, need to port pcu_gpio to use lpc_ich driver, when kernel > 3.18;
+ 
+ 	ret = pcu_wdt_init(pdev);
+-	if(ret) {
++	if(0) {
+ 		dev_err(&pdev->dev, "%s: failed to init wdt: %d\n", __func__, ret);
+ 		goto err_gpiochip_sus;
+ 	}
+@@ -833,17 +836,12 @@
+ static void
+ pcu_gpio_remove(struct pci_dev *pdev)
+ {
+-	int ret;
+ 	struct pcu_gpio *chip = pci_get_drvdata(pdev);
+ 
+ 	pcu_wdt_remove(pdev);
+ 
+-	ret = gpiochip_remove(chip->gpio + PCU_GPIO_SUS);
+-	if(ret)
+-		dev_err(&pdev->dev, "%s: failed SUS GPIO, %d", __func__, ret);
+-	ret = gpiochip_remove(chip->gpio + PCU_GPIO_SC);
+-	if(ret)
+-		dev_err(&pdev->dev, "%s: failed SC GPIO, %d", __func__, ret);
++	gpiochip_remove(chip->gpio + PCU_GPIO_SUS);
++	gpiochip_remove(chip->gpio + PCU_GPIO_SC);
+ 
+ 	pci_iounmap(pdev, chip->base);
+ 	pci_release_regions(pdev);
+@@ -872,7 +870,7 @@
+ #define pcu_gpio_resume NULL
+ #endif
+ 
+-static DEFINE_PCI_DEVICE_TABLE(pcu_gpio_pcidev_id) = {
++static const struct pci_device_id pcu_gpio_pcidev_id[] = {
+ 	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x1f38) },
+ 	{ 0, }
+ };
+@@ -891,3 +889,7 @@
+ 
+ MODULE_DESCRIPTION("Atom PCU GPIO PCI Driver");
+ MODULE_LICENSE("GPL");
++
++static struct dmi_system_id vc_dmi_stub = { .driver_data = (void *)VC_EDGE510 };
++struct dmi_system_id *vc_dmi = &vc_dmi_stub;
++int vc_bbfw = 0;

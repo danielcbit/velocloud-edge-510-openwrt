@@ -1,0 +1,13 @@
+{
+	"luci-app-lte": {
+		"description": "Grant access to LTE status",
+		"read": {
+			"file": {
+				"/usr/bin/lte-status": [ "exec" ]
+			},
+			"ubus": {
+				"file": [ "exec" ]
+			}
+		}
+	}
+}

@@ -1,0 +1,13 @@
+#!/bin/sh /etc/rc.common
+# VeloCloud Edge 510 LTE - apply SIM mux + power the EM7455 before network starts.
+
+START=19
+STOP=99
+
+start() {
+	/usr/bin/lte-hw-setup
+}
+
+stop() {
+	return 0
+}

@@ -1,0 +1,28 @@
+--- a/lib/netifd/proto/qmi.sh
++++ b/lib/netifd/proto/qmi.sh
+@@ -10,6 +10,7 @@
+ 	available=1
+ 	no_device=1
+ 	proto_config_add_string "device:device"
++	proto_config_add_string "sim_slot"
+ 	proto_config_add_string apn
+ 	proto_config_add_string v6apn
+ 	proto_config_add_string auth
+@@ -47,13 +48,15 @@
+ 	local apn auth delay device modes password pdptype pincode username v6apn
+ 	json_get_vars apn auth delay device modes password pdptype pincode username v6apn
+ 
+-	local profile v6profile devpath dhcp dhcpv6 autoconnect plmn timeout
+-	json_get_vars profile v6profile devpath dhcp dhcpv6 autoconnect plmn timeout
++	local profile v6profile devpath dhcp dhcpv6 autoconnect plmn timeout sim_slot
++	json_get_vars profile v6profile devpath dhcp dhcpv6 autoconnect plmn timeout sim_slot
+ 
+ 	[ "$timeout" = "" ] && timeout="10"
+ 
+ 	[ "$metric" = "" ] && metric="0"
+ 
++	[ -x /usr/bin/lte-qmi-preup ] && /usr/bin/lte-qmi-preup "$interface" "$sim_slot"
++
+ 	[ -n "$ctl_device" ] && device=$ctl_device
+ 
+ 	if [ -n "$devpath" ]; then

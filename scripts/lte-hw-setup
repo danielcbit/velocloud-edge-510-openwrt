@@ -1,0 +1,103 @@
+#!/bin/sh
+# VeloCloud Edge 510 LTE - hardware setup (SIM mux + modem power).
+# Called at boot by /etc/init.d/lte-hw and by /usr/bin/sim-select.
+#
+# Usage: lte-hw-setup [--slot bottom|top]
+# With no --slot the choice saved in /etc/lte-sim-slot is used (default bottom).
+
+SLOTFILE=/etc/lte-sim-slot
+DEV=/dev/cdc-wdm0
+
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+
+log() {
+	logger -t lte-hw "$*"
+	echo "$*"
+}
+
+slot=""
+while [ $# -gt 0 ]; do
+	case "$1" in
+		--slot) shift; slot="$1" ;;
+	esac
+	shift
+done
+# Prefer the option saved from LuCI, then the last applied slot.
+[ -n "$slot" ] || slot=$(uci -q get network.wanb.sim_slot 2>/dev/null)
+[ -n "$slot" ] || slot=$(cat "$SLOTFILE" 2>/dev/null)
+case "$slot" in
+	bottom|top) ;;
+	*) slot=bottom ;;
+esac
+
+# --- PCU GPIO driver: needed for the SIM mux -------------------------------
+insmod /root/gpio-pcu.ko 2>/dev/null
+if [ ! -e /sys/class/gpio/gpiochip32 ]; then
+	if [ -e /sys/bus/pci/drivers/lpc_ich/0000:00:1f.0 ]; then
+		echo -n 0000:00:1f.0 > /sys/bus/pci/drivers/lpc_ich/unbind
+	fi
+	if [ -e /sys/bus/pci/drivers/pcu_gpio ]; then
+		echo -n 0000:00:1f.0 > /sys/bus/pci/drivers/pcu_gpio/bind
+	fi
+	for i in 1 2 3 4 5; do
+		[ -e /sys/class/gpio/gpiochip32 ] && break
+		sleep 1
+	done
+fi
+
+# GPIO 38 = PCU SC line 6. 0 = bottom SIM, 1 = top SIM.
+[ -d /sys/class/gpio/gpio38 ] || echo 38 > /sys/class/gpio/export 2>/dev/null
+echo out > /sys/class/gpio/gpio38/direction 2>/dev/null
+case "$slot" in
+	bottom) gpio_val=0 ;;
+	top)    gpio_val=1 ;;
+esac
+echo "$gpio_val" > /sys/class/gpio/gpio38/value 2>/dev/null
+echo "$slot" > "$SLOTFILE"
+log "SIM mux = $slot (GPIO38=$gpio_val)"
+
+# --- PCA9539 modem power ---------------------------------------------------
+modprobe i2c-i801 2>/dev/null
+[ -e /root/i2c-ismt.ko ] && insmod /root/i2c-ismt.ko 2>/dev/null
+
+BUS=$(i2cdetect -l 2>/dev/null | awk '/iSMT/{gsub("i2c-","",$1); print $1; exit}')
+if [ -z "$BUS" ]; then
+	log "no iSMT bus found"
+	exit 1
+fi
+
+i2cset -y "$BUS" 0x74 0x06 0x6043 w 2>/dev/null
+i2cset -y "$BUS" 0x74 0x04 0x0000 w 2>/dev/null
+i2cset -y "$BUS" 0x74 0x02 0x0000 w 2>/dev/null   # all off
+log "modem power off"
+
+# Wait for the old USB device to go away so we do not hand netifd a stale node.
+for i in $(seq 1 10); do
+	[ -e "$DEV" ] || break
+	sleep 1
+done
+
+sleep 1
+i2cset -y "$BUS" 0x74 0x02 0x8000 w 2>/dev/null   # sim_enable high, power off
+sleep 1
+i2cset -y "$BUS" 0x74 0x02 0x8020 w 2>/dev/null   # reset released
+sleep 1
+i2cset -y "$BUS" 0x74 0x02 0x9FBC w 2>/dev/null   # power on + rfkill/gnss
+sleep 1
+i2cset -y "$BUS" 0x74 0x02 0x1FBC w 2>/dev/null   # SIM plug low
+sleep 1
+i2cset -y "$BUS" 0x74 0x02 0x9FBC w 2>/dev/null   # SIM plug high
+log "modem powered, SIM $slot"
+
+for i in $(seq 1 40); do
+	[ -e "$DEV" ] && break
+	sleep 1
+done
+[ -e "$DEV" ] || {
+	log "cdc-wdm0 did not appear"
+	exit 1
+}
+sleep 2
+log "cdc-wdm0 ready"
+exit 0
