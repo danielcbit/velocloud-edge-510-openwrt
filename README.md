@@ -29,7 +29,8 @@ reproduce the result on the same hardware.
   (bottom/top), which switches GPIO 38 and power-cycles the modem.
 - **mwan3** with `eth1` as primary (metric 1) and LTE as backup (metric 2).
 - **LuCI Status → LTE** page with live RSRP/RSRQ/RSSI/SNR, band/channel/PCI,
-  TAC/eNodeB/cell ID, IP/DNS/MTU, SIM state and traffic counters.
+  TAC/eNodeB/cell ID, IP/DNS/MTU, SIM state, traffic counters and
+  signal-history sparklines.
 - **LTE watchdog** that restarts `wanb` if the link drops.
 - **Stock OS recovery** through the existing GRUB menu entries.
 

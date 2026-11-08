@@ -2,8 +2,20 @@
 # Collect EM7455 / QMI status as one JSON object for the LuCI LTE page.
 # Safe to run repeatedly; every uqmi call has a hard timeout.
 
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+
+# Never let two collectors talk to the QMI device at once. If a previous run
+# is wedged, its lock is considered stale after one minute.
+LOCK=/tmp/lte-status.lock
+if ! mkdir "$LOCK" 2>/dev/null; then
+	find "$LOCK" -mmin +1 -exec rmdir {} \; 2>/dev/null
+	mkdir "$LOCK" 2>/dev/null || exit 0
+fi
+trap 'rmdir "$LOCK" 2>/dev/null' EXIT INT TERM
+
 D=${LTE_DEV:-/dev/cdc-wdm0}
-T=3000
+T=5000
 SLOTFILE=/etc/lte-sim-slot
 
 json_escape() {
@@ -27,29 +39,18 @@ bool() {
 		*) printf 'null' ;;
 	esac
 }
-# BusyBox here has no timeout applet.
-to() {
-	_secs=$1
-	shift
-	"$@" &
-	_p=$!
-	( sleep "$_secs"; kill "$_p" 2>/dev/null ) >/dev/null 2>&1 &
-	_w=$!
-	wait "$_p" 2>/dev/null
-	kill "$_w" 2>/dev/null
-}
 cellval() {
 	printf '%s' "$cell" | grep -o "\"$1\":[^,}]*" | head -1 | cut -d: -f2 | tr -d '"'
 }
 
-sig=$(to 6 uqmi -s -d "$D" -t "$T" --get-signal-info 2>/dev/null)
-serv=$(to 6 uqmi -s -d "$D" -t "$T" --get-serving-system 2>/dev/null)
-sys=$(to 6 uqmi -s -d "$D" -t "$T" --get-system-info 2>/dev/null)
-cell=$(to 6 uqmi -s -d "$D" -t "$T" --get-cell-location-info 2>/dev/null)
-tx=$(to 6 uqmi -s -d "$D" -t "$T" --get-tx-rx-info lte 2>/dev/null)
-cur=$(to 6 uqmi -s -d "$D" -t "$T" --get-current-settings 2>/dev/null)
-data=$(to 6 uqmi -s -d "$D" -t "$T" --get-data-status 2>/dev/null)
-sim=$(to 6 uqmi -s -d "$D" -t "$T" --uim-get-sim-state 2>/dev/null)
+sig=$(uqmi -s -d "$D" -t "$T" --get-signal-info 2>/dev/null)
+serv=$(uqmi -s -d "$D" -t "$T" --get-serving-system 2>/dev/null)
+sys=$(uqmi -s -d "$D" -t "$T" --get-system-info 2>/dev/null)
+cell=$(uqmi -s -d "$D" -t "$T" --get-cell-location-info 2>/dev/null)
+tx=$(uqmi -s -d "$D" -t "$T" --get-tx-rx-info lte 2>/dev/null)
+cur=$(uqmi -s -d "$D" -t "$T" --get-current-settings 2>/dev/null)
+data=$(uqmi -s -d "$D" -t "$T" --get-data-status 2>/dev/null)
+sim=$(uqmi -s -d "$D" -t "$T" --uim-get-sim-state 2>/dev/null)
 wanb=$(ifstatus wanb 2>/dev/null)
 
 op=$(jf "$serv" '@.plmn_description')

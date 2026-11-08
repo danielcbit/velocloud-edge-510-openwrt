@@ -154,6 +154,8 @@ setup). This repository adds a self-contained **Status → LTE** page instead.
 It shows:
 
 - **Signal:** RSRP, RSRQ, RSSI, SNR, TX power (RSRP is colour-coded).
+- **Signal history:** RSRP/RSRQ/SNR sparklines, last 90 samples at 30 s
+  intervals, kept in the browser’s `localStorage` so they survive reloads.
 - **Network:** operator, PLMN, registration, roaming, radio, service status.
 - **Cell:** band, frequency, channel, PCI, TAC, eNodeB, cell ID, duplex.
 - **Data:** data status, IPv4, gateway, DNS, MTU, interface state, uptime,
@@ -165,7 +167,7 @@ Implementation:
 | Path | Purpose |
 |---|---|
 | `/usr/bin/lte-status` | runs `uqmi` queries and emits one JSON object |
-| `/www/luci-static/resources/view/lte/status.js` | LuCI view, refreshes every 10 s |
+| `/www/luci-static/resources/view/lte/status.js` | LuCI view, refreshes every 30 s and draws the sparklines |
 | `/usr/share/luci/menu.d/luci-app-lte.json` | adds **Status → LTE** |
 | `/usr/share/rpcd/acl.d/luci-app-lte.json` | grants `file exec` for `/usr/bin/lte-status` |
 
